@@ -504,7 +504,7 @@ class App extends Component {
   };
 
   backAction = e => {
-    //this.webview.goBack();
+    this.triggerEvent('back_button');
     return true;
   };
 
@@ -549,8 +549,8 @@ class App extends Component {
     let read = PermissionsAndroid.check(
       PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
     );
-    let write = PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
-    let camera = PermissionsAndroid.check(
+    let camera = PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+    let write = PermissionsAndroid.check(
       PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
     );
     let location = PermissionsAndroid.check(
