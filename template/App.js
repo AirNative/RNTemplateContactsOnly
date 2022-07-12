@@ -4,7 +4,6 @@ import {
   BackHandler,
   Vibration,
   StyleSheet,
-  Text,
   View,
   Platform,
   PermissionsAndroid,
@@ -19,26 +18,51 @@ import {WebView} from 'react-native-webview';
 import NetInfo from '@react-native-community/netinfo';
 import OneSignal from 'react-native-onesignal';
 import createInvoke from 'react-native-webview-invoke/native';
-import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
 import FingerprintScanner from 'react-native-fingerprint-scanner';
 import Share from 'react-native-share';
+import {InAppBrowser} from 'react-native-inappbrowser-reborn';
+import Geolocation from '@react-native-community/geolocation';
+import RNBootSplash from 'react-native-bootsplash';
+import {URL} from 'react-native-url-polyfill';
 
 /** Contacts */
 import Contacts from 'react-native-contacts';
+const enableContacts = true;
 
 /** IN-APP Purchase */
 //import * as RNIap from 'react-native-iap';
+const enableIAP = false;
 
-import Geolocation from '@react-native-community/geolocation';
-import RNBootSplash from 'react-native-bootsplash';
 
+/** OneSignal App ID - тут ставит id приложения юзера для инициализации OneSignal */
 OneSignal.setAppId('22d1a9d2-0e81-4906-acff-13c98c1a6847');
 
-/* Fullscreen */
-const setFullscreenWithoutBar = false; //Без шторки
-const setFullscreenWithBar = false; // с шторкой
-const userURL = 'https://www.zeroqode.com/'; //ссылка на приложение юзера
+/** Если поставить
+ *  setFullscreenWithoutBar = true
+ *  будет фулскрин приложение без шторки
+ */
+const setFullscreenWithoutBar = false;
+
+/** Если поставить
+ *  setFullscreenWithBar = true
+ *  будет фулскрин приложение с прозрачной шторкой
+ */
+const setFullscreenWithBar = false;
+
+/** Ссылка на приложение юзера */
+const userURL = 'https://zeroqode.com';
+
+/** Уникальная схема для приложения юзера, тут надо использовать то же самое название что при создании схемы */
+const scheme = 'innerspace://';
+
+/** Мы эмулируем бутсплэш, для этого берем иконку и делаем такой же фон как у бутсплэша */
 const bootsplashColor = '#FFFFFF';
+
+/** Размеры иконки бутсплэша */
+const logoWidth = 100;
+
+var urlData = new URL(userURL);
+const hostURL = urlData.origin;
 
 if (setFullscreenWithoutBar || setFullscreenWithBar) {
   StatusBar.setTranslucent(true); //если нужно чтоб приложение на android было под status bar -> true
@@ -61,8 +85,8 @@ class App extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      iapEnabled: false, // set TRUE if need in-app purchases
-      contactsEnabled: true, //set TRUE if need native contacts
+      iapEnabled: enableIAP === true, // set TRUE if need in-app purchases
+      contactsEnabled: enableContacts === true, //set TRUE if need native contacts
       isConnected: true,
       filePath: null,
       fileData: null,
@@ -78,6 +102,7 @@ class App extends Component {
       centerButtonFN: function () {},
       rightButtonFN: function () {},
       appState: AppState.currentState,
+      currentURL: userURL,
     };
   }
 
@@ -85,13 +110,29 @@ class App extends Component {
     if (this.state.iapEnabled) {
       RNIap.initConnection();
     }
-    
-    this.appStateChecker = AppState.addEventListener('change', (newState) => {
-      if ( this.state.appState.match(/inactive|background/) && newState === 'active' ){
+
+    Linking.addEventListener('url', ({url}) => {
+      if (this.webview) {
+        this.webview.injectJavaScript(
+          `window.location.href = "${url.replace(
+            scheme,
+            'https://',
+          )}"`,
+        );
+      }
+    });
+
+    this.appStateChecker = AppState.addEventListener('change', newState => {
+      if (
+        this.state.appState.match(/inactive|background/) &&
+        newState === 'active'
+      ) {
         this.triggerEvent('loaded_from_background');
       }
 
-      this.setState({appState: newState});
+      this.setState({
+        appState: newState,
+      });
     });
 
     BackHandler.addEventListener('hardwareBackPress', this.backAction);
@@ -107,7 +148,8 @@ class App extends Component {
     this.invoke.define('stopLocationTracking', this.stopLocationTracking);
     this.invoke.define('setStatusBarColor', this.setStatusBarColor);
     this.invoke.define('getDeviceOS', this.getDeviceOS);
-    
+    this.invoke.define('showPrompt', this.showPrompt);
+
     if (this.state.contactsEnabled) {
       this.invoke.define('getContacts', this.getContacts);
     }
@@ -117,8 +159,8 @@ class App extends Component {
       this.invoke.define('fetchProducts', this.fetchProducts);
       this.invoke.define('fetchSubscriptions', this.fetchSubscriptions);
       this.invoke.define('restorePurchase', this.goToRestore);
-      this.invoke.define('findPurchase', this.findPurchase);
       this.invoke.define('getAllProducts', this.getAllProducts);
+      this.invoke.define('findPurchase', this.findPurchase);
     }
 
     NetInfo.addEventListener(state => {
@@ -127,28 +169,29 @@ class App extends Component {
       });
       this.render();
     });
-    
-    setTimeout(() => {
-      OneSignal.getDeviceState().then(data => {
-        if (data.isSubscribed == false) {
-          OneSignal.addTrigger("prompt_ios", "true");
-        }
-      });
-    },5000);
   }
 
   componentWillUnmount() {
     if (this.state.iapEnabled) {
       RNIap.endConnection();
     }
-     this.appStateChecker.remove();
+    this.appStateChecker.remove();
   }
-  
-  /* Platform OS */
+
+  /** Platform OS */
   getDeviceOS = () => {
     return Platform.OS;
   };
-  
+
+  /** PushPrompt */
+  showPrompt = () => {
+    OneSignal.getDeviceState().then(data => {
+      if (data.isSubscribed == false) {
+        OneSignal.addTrigger('prompt_ios', 'true');
+      }
+    });
+  };
+
   /** Contacts */
   getContacts = () => {
     return new Promise((resolve, reject) => {
@@ -203,7 +246,7 @@ class App extends Component {
   /** -------- */
 
   /** In-App functions */
-  
+
   /** Deprecated */
   fetchProducts = async products => {
     function onlyUnique(value, index, self) {
@@ -220,7 +263,9 @@ class App extends Component {
 
     data.filter(onlyUnique);
 
-    this.setState({products: data});
+    this.setState({
+      products: data,
+    });
     return true;
   };
   /** Deprecated */
@@ -237,7 +282,9 @@ class App extends Component {
     }
 
     data.filter(onlyUnique);
-    this.setState({products: data});
+    this.setState({
+      products: data,
+    });
 
     return true;
   };
@@ -324,7 +371,7 @@ class App extends Component {
     }
   };
 
- findPurchase = transactionId => {
+  findPurchase = transactionId => {
     return new Promise((resolve, reject) => {
       RNIap.getAvailablePurchases().then(listOfPurchases => {
         listOfPurchases.forEach(purchase => {
@@ -352,6 +399,16 @@ class App extends Component {
         centerButtonFN: this.triggerCenterButton,
       }); //Указываем что первая загрузка была и более сплэш скрин нам не нужен
       RNBootSplash.hide(); // Отключаем сплэш скрин
+      Linking.getInitialURL().then(url => {
+        if (url) {
+          this.webview.injectJavaScript(
+            `window.location.href = "${url.replace(
+              scheme,
+              'https://',
+            )}"`,
+          );
+        }
+      });
     }
   };
 
@@ -391,7 +448,9 @@ class App extends Component {
 
       StatusBar.setBackgroundColor(color, animated);
     } else if (color !== '#000000' && color !== null && color !== undefined) {
-      this.setState({bgColor: color});
+      this.setState({
+        bgColor: color,
+      });
     }
   };
 
@@ -496,7 +555,7 @@ class App extends Component {
   oneSignalGetId = async () => {
     var state = await OneSignal.getDeviceState();
     if (state.isSubscribed === false) {
-      OneSignal.addTrigger("prompt_ios", "true");
+      OneSignal.addTrigger('prompt_ios', 'true');
     }
     return state;
   };
@@ -522,6 +581,7 @@ class App extends Component {
   };
 
   backAction = e => {
+    //this.webview.goBack();
     this.triggerEvent('back_button');
     return true;
   };
@@ -567,7 +627,9 @@ class App extends Component {
     let read = PermissionsAndroid.check(
       PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
     );
-    let camera = PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+    let camera = PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+    );
     let write = PermissionsAndroid.check(
       PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
     );
@@ -575,18 +637,36 @@ class App extends Component {
       PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
     );
 
+    if (enableContacts) {
+        let contacts = PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+        );
+
+        if (
+          contacts !== PermissionsAndroid.RESULTS.GRANDTED &&
+          contacts !== PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
+        ) {
+          await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+          );
+        }
+    }
     if (
       read !== PermissionsAndroid.RESULTS.GRANDTED &&
       read !== PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
     ) {
-      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+      await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+      );
     }
 
     if (
       write !== PermissionsAndroid.RESULTS.GRANDTED &&
       write !== PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
     ) {
-      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
+      await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+      );
     }
 
     if (
@@ -600,9 +680,10 @@ class App extends Component {
       location !== PermissionsAndroid.RESULTS.GRANDTED &&
       location !== PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN
     ) {
-      await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+      await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      );
     }
-
   };
 
   loadEndFunction = () => {
@@ -622,6 +703,34 @@ class App extends Component {
 
   onContentProcessDidTerminate = () => this.webview.reload();
 
+  handleWebViewNavigationStateChange = navState => {
+    const {url} = navState;
+    if (!url) return;
+
+    if (
+      url.indexOf(hostURL) === -1 &&
+      url.indexOf(scheme) === -1 &&
+      url.indexOf('auth') === -1
+    ) {
+      this.webview.stopLoading();
+      InAppBrowser.isAvailable().then(available => {
+        if (available) {
+          InAppBrowser.open(url, {
+            modalPresentationStyle: 'fullScreen',
+          });
+        } else {
+          Linking.canOpenURL(url).then(canOpen => {
+            if (canOpen) Linking.openURL(url);
+          });
+        }
+      });
+    } else {
+      this.setState({
+        currentURL: url,
+      });
+    }
+  };
+
   render() {
     if (this.state.isConnected) {
       if (setFullscreenWithoutBar || setFullscreenWithBar) {
@@ -636,6 +745,8 @@ class App extends Component {
               injectedJavaScript={INJECTED_JAVASCRIPT}
               ref={ref => (this.webview = ref)}
               onContentProcessDidTerminate={this.onContentProcessDidTerminate}
+              onNavigationStateChange={this.handleWebViewNavigationStateChange}
+              decelerationRate={'normal'}
               onMessage={this.invoke.listener}
               allowsBackForwardNavigationGestures={true}
               allowsInlineMediaPlayback={true}
@@ -652,9 +763,12 @@ class App extends Component {
                       alignItems: 'center',
                     }}>
                     <Image
-                      style={{width: 100, height: 100}}
+                      style={{
+                        width: logoWidth,
+                        height: logoWidth,
+                      }}
                       source={require('./sources/boot.png')} //Bootsplash image
-                    />
+                    />{' '}
                   </View>
                 );
               }}
@@ -677,6 +791,8 @@ class App extends Component {
               injectedJavaScript={INJECTED_JAVASCRIPT}
               ref={ref => (this.webview = ref)}
               onContentProcessDidTerminate={this.onContentProcessDidTerminate}
+              onNavigationStateChange={this.handleWebViewNavigationStateChange}
+              decelerationRate={'normal'}
               onMessage={this.invoke.listener}
               allowsBackForwardNavigationGestures={true}
               allowsInlineMediaPlayback={true}
@@ -693,7 +809,10 @@ class App extends Component {
                       alignItems: 'center',
                     }}>
                     <Image
-                      style={{width: 100, height: 100}}
+                      style={{
+                        width: logoWidth,
+                        height: logoWidth,
+                      }}
                       source={require('./sources/boot.png')} //Bootsplash image
                     />
                   </View>
@@ -730,7 +849,6 @@ class App extends Component {
           </SafeAreaView>
         );
       }
-      
     }
   }
 }
