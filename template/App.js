@@ -768,7 +768,7 @@ class App extends Component {
                         height: logoWidth,
                       }}
                       source={require('./sources/boot.png')} //Bootsplash image
-                    />{' '}
+                    />
                   </View>
                 );
               }}
