@@ -614,8 +614,8 @@ class App extends Component {
       });
   };
 
-  backAction = e => {
-    //this.webview.goBack();
+ backAction = e => {
+    if ( this.webview && this.state.canGoBack ) this.webview.goBack();
     this.triggerEvent('back_button');
     return true;
   };
@@ -739,6 +739,9 @@ class App extends Component {
 
   handleWebViewNavigationStateChange = navState => {
     const {url} = navState;
+    this.setState({
+      canGoBack: navState.canGoBack
+    });
     if (!url) return;
 
     if (
