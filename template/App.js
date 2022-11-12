@@ -104,6 +104,7 @@ class App extends Component {
       rightButtonFN: function () {},
       appState: AppState.currentState,
       currentURL: userURL,
+      canGoBack: false
     };
   }
 
